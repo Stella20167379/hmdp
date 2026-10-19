@@ -43,9 +43,7 @@ import static org.javaup.utils.RedisConstants.LOCK_SHOP_KEY;
 import static org.javaup.utils.RedisConstants.SHOP_GEO_KEY;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 商铺 接口实现
- * @author: 阿星不是程序员
  **/
 @Slf4j
 @Service
@@ -84,6 +82,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     
     @Override
     public Result queryById(Long id) {
+        //! 从v1-v4是缓存使用不断升级的过程！
         //Shop shop = queryByIdV1(id);
 
         // 互斥锁解决缓存击穿
@@ -103,6 +102,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
     
     public Shop queryByIdV1(Long id){
+//        不同版本的缓存查询方案，具体体现在cacheClient的不同函数实现上
         return cacheClient
                 .queryWithPassThrough(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
     }
@@ -118,39 +118,48 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
     
     public Shop queryByIdV4(Long id){
+//        查询redis缓存
         Shop shop =
                 redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY, id), Shop.class);
         if (Objects.nonNull(shop)) {
             return shop;
         }
         log.info("查询商铺 从Redis缓存没有查询到 商铺id : {}",id);
+//        布隆过滤器初步判断key是否存在/合理
         if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_SHOP).contains(String.valueOf(id))) {
             log.info("查询商铺 布隆过滤器判断不存在 商铺id : {}",id);
             throw new RuntimeException("查询商铺不存在");
         }
+//        判断该key是否已经存在null值
         Boolean existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY_NULL, id));
         if (existResult){
             throw new RuntimeException("查询商铺不存在");
         }
+//        获取锁
         RLock lock = serviceLockTool.getLock(LockType.Reentrant, LOCK_SHOP_KEY, new String[]{String.valueOf(id)});
         lock.lock();
         try {
+//            二次查询缓存key对应value值是否为null（注意key名称是不一样的：CACHE_SHOP_KEY_NULL）
             existResult = redisCache.hasKey(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY_NULL, id));
             if (existResult){
                 throw new RuntimeException("查询商铺不存在");
             }
+//            二次查询缓存是否存在（注意key名称是不一样的：CACHE_SHOP_KEY）
             shop = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY, id), Shop.class);
             if (Objects.nonNull(shop)) {
                 return shop;
             }
+//            查询数据库
             shop = getById(id);
             if (Objects.isNull(shop)) {
+//                key值非法，无有效数据，回写null缓存数值，设置有效期避免影响后续新增数据
                 redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY_NULL, id),
                         "这是一个空值",
                         CACHE_SHOP_TTL,
                         TimeUnit.MINUTES);
                 throw new RuntimeException("查询商铺不存在");
             }
+//            key值合法，将数据库值回写缓存
             redisCache.set(RedisKeyBuild.createRedisKey(RedisKeyManage.CACHE_SHOP_KEY, id),shop,
                     CACHE_SHOP_TTL,
                     TimeUnit.MINUTES);

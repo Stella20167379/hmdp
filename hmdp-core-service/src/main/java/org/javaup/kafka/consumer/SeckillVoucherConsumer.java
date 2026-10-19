@@ -42,9 +42,7 @@ import static org.javaup.constant.Constant.SPRING_INJECT_PREFIX_DISTINCTION_NAME
 
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: Kafka 消费者：处理秒杀券下单消息。
- * @author: 阿星不是程序员
  **/
 
 @Slf4j
@@ -167,6 +165,7 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     
     @Override
     protected void doConsume(MessageExtend<SeckillVoucherMessage> message) {
+//        竟然可以在kafka消息消费者这里调用service层的业务代码
         voucherOrderService.createVoucherOrderV2(message);
     }
     
@@ -223,21 +222,25 @@ public class SeckillVoucherConsumer extends AbstractConsumerHandler<SeckillVouch
     protected void afterConsumeFailure(final MessageExtend<SeckillVoucherMessage> message, 
                                        final Throwable throwable) {
         super.afterConsumeFailure(message, throwable);
+//        首先记为yes，要删除redis中的订单记录
         SeckillVoucherOrderOperate seckillVoucherOrderOperate = SeckillVoucherOrderOperate.YES;
+//        然后看异常是哪一种，假如说是已经存在订单所以报错，那么就改为no，不要删除redis订单记录
         if (throwable instanceof HmdpFrameException hmdpFrameException) {
             if (Objects.nonNull(hmdpFrameException.getCode()) && 
                     hmdpFrameException.getCode().equals(BaseCode.VOUCHER_ORDER_EXIST.getCode())){
                 seckillVoucherOrderOperate = SeckillVoucherOrderOperate.NO;
             }
         }
+//        创建分支记录id
         long traceId = snowflakeIdGenerator.nextId();
+//        创建订单消费失败，回滚库存
         redisVoucherData.rollbackRedisVoucherData(
-                seckillVoucherOrderOperate,
+                seckillVoucherOrderOperate,//指示是否删除订单记录
                 traceId,
                 message.getMessageBody().getVoucherId(),
                 message.getMessageBody().getUserId(),
                 message.getMessageBody().getOrderId(),
-                message.getMessageBody().getAfterQty(),
+                message.getMessageBody().getAfterQty(),//特意的数量反转，after传为before
                 message.getMessageBody().getChangeQty(),
                 message.getMessageBody().getBeforeQty()
         );

@@ -18,9 +18,7 @@ import static org.javaup.utils.RedisConstants.CACHE_NULL_TTL;
 import static org.javaup.utils.RedisConstants.LOCK_SHOP_KEY;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 缓存工具-黑马点评普通版本使用
- * @author: 阿星不是程序员
  **/
 @Slf4j
 @Component
@@ -49,6 +47,7 @@ public class CacheClient {
 
     public <R,ID> R queryWithPassThrough(
             String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit){
+//  缓存查询-V1方案
         String key = keyPrefix + id;
         // 1.从redis查询商铺缓存
         String json = stringRedisTemplate.opsForValue().get(key);
@@ -79,12 +78,13 @@ public class CacheClient {
 
     public <R, ID> R queryWithLogicalExpire(
             String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
+//  缓存查询-V3方案
         String key = keyPrefix + id;
         // 1.从redis查询商铺缓存
         String json = stringRedisTemplate.opsForValue().get(key);
         // 2.判断是否存在
         if (StrUtil.isBlank(json)) {
-            // 3.存在，直接返回
+            // 3.不存在，直接返回
             return null;
         }
         // 4.命中，需要先把json反序列化为对象
@@ -124,6 +124,7 @@ public class CacheClient {
 
     public <R, ID> R queryWithMutex(
             String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
+//  缓存查询-V2方案
         String key = keyPrefix + id;
         // 1.从redis查询商铺缓存
         String shopJson = stringRedisTemplate.opsForValue().get(key);

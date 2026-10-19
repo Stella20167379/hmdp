@@ -85,9 +85,7 @@ import static org.javaup.constant.Constant.SECKILL_VOUCHER_TOPIC;
 import static org.javaup.constant.RepeatExecuteLimitConstants.SECKILL_VOUCHER_ORDER;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 优惠券订单 接口实现
- * @author: 阿星不是程序员
  **/
 @Slf4j
 @Service
@@ -338,29 +336,36 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
     
     public Result<Long> doSeckillVoucherV2(Long voucherId) {
+//        从缓存--数据库结构中读取优惠券信息
         SeckillVoucherFullModel seckillVoucherFullModel = seckillVoucherService.queryByVoucherId(voucherId);
+//        读优惠券库存
         seckillVoucherService.loadVoucherStock(voucherId);
+//        取用户信息并检查等级
         Long userId = UserHolder.getUser().getId();
         verifyUserLevel(seckillVoucherFullModel,userId);
+//        生成订单ID和日志跟踪ID
         long orderId = snowflakeIdGenerator.nextId();
         long traceId = snowflakeIdGenerator.nextId();
+//        生成redis中的存储key
         List<String> keys = ListUtil.of(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId).getRelKey(),
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId).getRelKey(),
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId).getRelKey()
         );
+//        构建lua脚本的传入参数列表
         String[] args = new String[9];
         args[0] = voucherId.toString();
         args[1] = userId.toString();
         args[2] = String.valueOf(LocalDateTimeUtil.toEpochMilli(seckillVoucherFullModel.getBeginTime()));
         args[3] = String.valueOf(LocalDateTimeUtil.toEpochMilli(seckillVoucherFullModel.getEndTime()));
-        args[4] = String.valueOf(seckillVoucherFullModel.getStatus());
+        args[4] = String.valueOf(seckillVoucherFullModel.getStatus());//非法代码也不能下单成功
         args[5] = String.valueOf(orderId);
         args[6] = String.valueOf(traceId);
         args[7] = String.valueOf(LogType.DEDUCT.getCode());
         long secondsUntilEnd = Duration.between(LocalDateTimeUtil.now(), seckillVoucherFullModel.getEndTime()).getSeconds();
         long ttlSeconds = Math.max(1L, secondsUntilEnd + Duration.ofDays(1).getSeconds());
         args[8] = String.valueOf(ttlSeconds);
+//        执行lua脚本实现用户校验和库存扣减
         SeckillVoucherDomain seckillVoucherDomain = seckillVoucherOperate.execute(
                 keys,
                 args
@@ -368,6 +373,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (!seckillVoucherDomain.getCode().equals(BaseCode.SUCCESS.getCode())) {
             throw new HmdpFrameException(Objects.requireNonNull(BaseCode.getRc(seckillVoucherDomain.getCode())));
         }
+//        准备创建订单的kafka消息
         SeckillVoucherMessage seckillVoucherMessage = new SeckillVoucherMessage(
                 userId,
                 voucherId,
@@ -378,10 +384,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 seckillVoucherDomain.getAfterQty(),
                 Boolean.FALSE
         );
+//        发送下单消息等待消费
         seckillVoucherProducer.sendPayload(
                 SpringUtil.getPrefixDistinctionName() + "-" + SECKILL_VOUCHER_TOPIC, 
                 seckillVoucherMessage);
-        
+//        反馈用户下单成功
         return Result.ok(orderId);
     }
     
@@ -468,11 +475,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     
     
     @Override
-    @RepeatExecuteLimit(name = SECKILL_VOUCHER_ORDER,keys = {"#message.uuid"})
-    @Transactional(rollbackFor = Exception.class)
+    @RepeatExecuteLimit(name = SECKILL_VOUCHER_ORDER,keys = {"#message.uuid"})//幂等注解
+    @Transactional(rollbackFor = Exception.class)//事务注解
     public boolean createVoucherOrderV2(MessageExtend<SeckillVoucherMessage> message) {
+//        获取消息体
         SeckillVoucherMessage messageBody = message.getMessageBody();
         Long userId = messageBody.getUserId();
+//        根据优惠券id和用户id查询是否已经存在 正常 订单（又在校验幂等了 ）
+//        注意这里是查数据库而不是查缓存了，避免缓存过期重复扣减库存
         VoucherOrder normalVoucherOrder = lambdaQuery()
                 .eq(VoucherOrder::getVoucherId, messageBody.getVoucherId())
                 .eq(VoucherOrder::getUserId, userId)
@@ -482,6 +492,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             log.warn("已存在此订单，voucherId：{},userId：{}", normalVoucherOrder.getVoucherId(), userId);
             throw new HmdpFrameException(BaseCode.VOUCHER_ORDER_EXIST);
         }
+
+//        扣减库存
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock - 1")
                 .eq("voucher_id", messageBody.getVoucherId())
@@ -490,12 +502,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (!success) {
             throw new HmdpFrameException("优惠券库存不足！优惠券id:" + messageBody.getVoucherId());
         }
+//        创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
         voucherOrder.setId(messageBody.getOrderId());
         voucherOrder.setUserId(messageBody.getUserId());
         voucherOrder.setVoucherId(messageBody.getVoucherId());
         voucherOrder.setCreateTime(LocalDateTimeUtil.now());
-        save(voucherOrder);
+        save(voucherOrder); //mybatis封装的操作吧
+//        创建订单路由，干嘛用的
         VoucherOrderRouter voucherOrderRouter = new VoucherOrderRouter();
         voucherOrderRouter.setId(snowflakeIdGenerator.nextId());
         voucherOrderRouter.setOrderId(voucherOrder.getId());
@@ -504,12 +518,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherOrderRouter.setCreateTime(LocalDateTimeUtil.now());
         voucherOrderRouter.setUpdateTime(LocalDateTimeUtil.now());
         voucherOrderRouterService.save(voucherOrderRouter);
+//        redis缓存存储订单id和信息
         redisCache.set(RedisKeyBuild.createRedisKey(
                 RedisKeyManage.DB_SECKILL_ORDER_KEY,messageBody.getOrderId()),
                 voucherOrder,
                 60, 
                 TimeUnit.SECONDS
         );
+//        对账日志：一致-消费成功
         voucherReconcileLogService.saveReconcileLog(
                 LogType.DEDUCT.getCode(),
                 BusinessType.SUCCESS.getCode(),
@@ -586,6 +602,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherReconcileLogDto.setTraceId(traceId);
         voucherReconcileLogDto.setLogType(LogType.RESTORE.getCode());
         voucherReconcileLogDto.setBusinessType( BusinessType.CANCEL.getCode());
+//        记录对账日志
         boolean saveReconcileLogResult = voucherReconcileLogService.saveReconcileLog(voucherReconcileLogDto);
         
         boolean rollbackStockResult = seckillVoucherService.rollbackStock(cancelVoucherOrderDto.getVoucherId());

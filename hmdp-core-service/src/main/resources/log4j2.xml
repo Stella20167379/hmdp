@@ -8,8 +8,8 @@
 <Configuration status="WARN" monitorInterval="600">
 
     <Properties>
-        <!-- 配置日志文件输出目录 -->
-        <Property name="LOG_HOME">.</Property>
+        <!-- 配置日志文件输出目录,注意默认值有个`-`在前面 -->
+        <Property name="LOG_HOME">${env:LOG_HOME:-./logs}</Property>
         <Property name="PROJECT_NAME">core-service</Property>
         <Property name="ENV">local</Property>
         <Property name="FILE_NAME">log</Property>
@@ -30,7 +30,7 @@
 
         <!-- 输出到日志文件 -->
         <RollingFile name="RollingFile" fileName="${LOG_HOME}/logs/${PROJECT_NAME}/${FILE_NAME}.log"
-                     filePattern="${LOG_HOME}/logs/${PROJECT_NAME}/$${date:yyyy-MM}/${FILE_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
+                     filePattern="${LOG_HOME}/${PROJECT_NAME}/$${date:yyyy-MM}/${FILE_NAME}-%d{yyyy-MM-dd}-%i.log.gz">
             <ThresholdFilter level="INFO"/>
             <PatternLayout charset="${ENCODING}" pattern="${PATTERN}"/>
             <Policies>
@@ -45,7 +45,7 @@
 
         <!-- 输出错误信息到日志文件 -->
         <RollingFile name="RollingFileError" fileName="${LOG_HOME}/logs/${PROJECT_NAME}/${FILE_NAME}-error.log"
-                     filePattern="${LOG_HOME}/logs/${PROJECT_NAME}/$${date:yyyy-MM}/${FILE_NAME}-error-%d{yyyy-MM-dd}-%i.log.gz">
+                     filePattern="${LOG_HOME}/${PROJECT_NAME}/$${date:yyyy-MM}/${FILE_NAME}-error-%d{yyyy-MM-dd}-%i.log.gz">
             <ThresholdFilter level="ERROR"/>
             <PatternLayout charset="${ENCODING}" pattern="${PATTERN}"/>
             <Policies>

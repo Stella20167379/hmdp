@@ -1,0 +1,13 @@
+# application-dev.yml
+
+spring:
+  datasource:
+    url: jdbc:shardingsphere:classpath:shardingsphere.yaml
+  data:
+    redis:
+      database: 0
+      host: 127.0.0.1
+      port: 6379
+      password: redis123
+  kafka:
+    bootstrap-servers: localhost:9092

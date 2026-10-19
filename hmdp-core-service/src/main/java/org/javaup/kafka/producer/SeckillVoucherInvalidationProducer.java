@@ -21,9 +21,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: Kafka 生产者：广播“秒杀券缓存失效”消息
- * @author: 阿星不是程序员
  **/
 @Slf4j
 @Component
@@ -63,15 +61,18 @@ public class SeckillVoucherInvalidationProducer extends AbstractProducerHandler<
         final String errMsg = throwable == null ? "unknown" : throwable.getMessage();
         log.error("SeckillVoucherInvalidation send failed, topic={}, uuid={}, key={}, voucherId={}, reason={}, error= {}",
                 topic, message.getUuid(), message.getKey(), voucherId, reason, errMsg, throwable);
+//        topic字符串里包含DLQ字段，说明消息进入了死信队列
         if (topic.contains(DLQ)) {
             safeInc("seckill_invalidation_dlq", "reason", "send_failures");
             return;
         }else {
+            //  消息发送失败，更新失败记录指标
             safeInc("seckill_invalidation_send_failures", "topic", topic);
         }
-        
-        
+
+//       2) 失败重试（可配置次数 + 退避），通过 header 标记重试次数避免无限递归
         Map<String, String> headers = message.getHeaders();
+        // 重试准备，复制或创建 headers，解析 retryCount重试次数，解析失败则按 0 处理
         headers = headers == null ? new HashMap<>(8) : new HashMap<>(headers);
         int retryCount = 0;
         try {
@@ -89,16 +90,20 @@ public class SeckillVoucherInvalidationProducer extends AbstractProducerHandler<
             log.warn("Retry sending cache invalidation, topic={}, uuid={}, voucherId={}, retryCount={}, backoffMs={}",
                     topic, message.getUuid(), voucherId, retryCount + 1, backoff);
             safeInc("seckill_invalidation_send_retries", "topic", topic);
+            // 简单退避等待后重试
             sleepQuietly(backoff);
+            // 异步重试：若再失败会再次进入本方法，直到超过最大重试次数
             sendRecord(topic, message);
             return;
         }
-
+// 3) 放入 DLQ，便于后续人工/自动补偿
         final String dlqReason = "send_invalid_cache_broadcast_failed: " + truncate(errMsg);
         try {
+//            发送到死信队列：调用 sendToDlq(topic, body, dlqReason) ；这里就是“发送到 DLQ”，无需讲解其原理。
             sendToDlq(topic, body, dlqReason);
             log.warn("Send cache invalidation to DLQ, originalTopic={}, uuid={}, voucherId={}, dlqReason={}",
                     topic, message.getUuid(), voucherId, dlqReason);
+//            记录审计日志与指标： DLQ_PUBLISH 审计、 seckill_invalidation_send_dlq 成功；若发送 DLQ 失败则记 seckill_invalidation_send_dlq_failures 。
             auditLog.warn("DLQ_PUBLISH|topic={}|uuid={}|key={}|voucherId={}|reason={}",
                     topic, message.getUuid(), message.getKey(), voucherId, dlqReason);
             safeInc("seckill_invalidation_send_dlq", "topic", topic);
@@ -139,6 +144,7 @@ public class SeckillVoucherInvalidationProducer extends AbstractProducerHandler<
     }
     
     private void safeInc(String name, String tagKey, String tagValue) {
+//        记录失败指标数据（Micrometer.MeterRegistry），用于Prometheus库之类的监控作用
         try {
             if (meterRegistry != null) {
                 meterRegistry.counter(name, tagKey, tagValue).increment();

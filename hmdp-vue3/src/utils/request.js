@@ -25,7 +25,7 @@ const instance = axios.create({
 // 请求拦截器
 instance.interceptors.request.use(
   (config) => {
-    const userStore = useUserStore()
+    const userStore = useUserStore() //用来存储用户登录token的pinion组件
     // TODO 2.请求头里添加token
     if (userStore.token) {
       config.headers.Authorization = `${userStore.token}`
@@ -34,7 +34,7 @@ instance.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 )
-//响应拦截器
+// 响应拦截器，统一处理后端返回的数据和状态码
 instance.interceptors.response.use(
   (response) => {
     // 判断执行结果
@@ -43,13 +43,14 @@ instance.interceptors.response.use(
       ElMessage.error(response.data.errorMsg || '响应拦截器提示：服务异常')
       return Promise.reject(response.data.errorMsg)
     }
+    // 响应正确，放行数据
     return response.data
   },
   (error) => {
     if (error.response?.status === 401) {
       // TODO 4.未登录或者token过期 跳转到登录页
       ElMessage.error('响应拦截器提示：请先登录')
-      router.push('/login')
+      router.push('/login') // 路由push跳转
       return
     }
     // TODO 5. 处理一般错误

@@ -25,9 +25,6 @@
     <packaging>pom</packaging>
 
     <name>${project.artifactId}</name>
-    <description>
-        🔥 热门推荐 🔥 将黑马点评进行完全地重构升级，围绕优惠券秒杀与热点查询，补齐高并发稳定性、动态令牌、限流、消息可靠性与数据一致性闭环，并添加订阅通知、候补排队等新亮点功能，解决烂大街和亮点不足问题！并打造成真正企业级别实战项目，全面工程化落地。
-    </description>
 
     <modules>
         <module>hmdp-common</module>
@@ -77,12 +74,15 @@
         <aviator.version>5.4.3</aviator.version>
         <sa-token.version>1.43.0</sa-token.version>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
         </dependency>
     </dependencies>
+
+<!-- 在父 pom 中 统一指定依赖版本号，子模块使用时只需写 groupId + artifactId，不需要再写版本。  -->
     <dependencyManagement>
         <dependencies>
             <dependency>

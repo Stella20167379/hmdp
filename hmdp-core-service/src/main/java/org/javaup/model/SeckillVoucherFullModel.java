@@ -9,9 +9,7 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 秒杀优惠券的全部信息
- * @author: 阿星不是程序员
  **/
 @Data
 @EqualsAndHashCode(callSuper = false)

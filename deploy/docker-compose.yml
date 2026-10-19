@@ -1,0 +1,100 @@
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 5
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_log:/var/lib/zookeeper/log
+    restart: always
+    networks:
+      - microservice-net
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181 # 直接就是通过内部network访问zookeeper容器的2181端口
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1 # 控制 __consumer_offsets 主题的副本数。这个主题用于存储消费者提交的位移（Offset）
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1 # 指定事务状态主题写入成功所需的最小同步副本数（ISR）,单机kafka必要配置
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1 # 控制 __transaction_state 主题的副本数。这个主题用于存储事务状态
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0 # 消费者组初始重平衡延迟。Kafka 默认会有几秒延迟，以便等待更多消费者加入，从而减少不必要的重平衡。设为 0 是为了在开发测试时让消费者立即开始工作，不用等待
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true" # 允许 Kafka 在生产者向不存在的主题发送消息并自动创建topic，生产环境下关闭
+#    ports:
+#      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    restart: always
+    networks:
+      - microservice-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+    volumes:
+      - redis_data:/data
+      - ./redis/conf/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    restart: always
+    networks:
+      - microservice-net
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:123456}
+      MYSQL_DATABASE: hmdp_0
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - microservice-net
+
+  hmdp-vue:
+    image: hmdp-vue:1.0
+    ports:
+      - "80:80"
+    depends_on:
+      - hmdp-java
+    networks:
+      - microservice-net
+
+  hmdp-java:
+      image: hmdp-web:1.0
+      environment:
+        # 切换生产环境下的配置文件
+        SPRING_PROFILES_ACTIVE: prod
+        MYSQL_USER: ${MYSQL_USER:root}
+        MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+        REDIS_PASSWORD: ${REDIS_PASSWORD}
+      depends_on:
+        - mysql
+        - redis
+        - kafka
+      volumes:
+        - ./hmdp/logs: /hmdp/logs # 根据镜像工作目录和log4j2配置文件目录得到最终日志打印位置，并修改volume以持久化日志文件
+      networks:
+        - microservice-net
+
+networks:
+  microservice-net:
+    driver: bridge
+
+volumes:
+  zookeeper_data:
+  zookeeper_log:
+  kafka_data:
+  mysql_data:
+  redis_data:
+

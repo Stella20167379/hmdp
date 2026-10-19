@@ -12,34 +12,37 @@ import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Bean;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料 
  * @description: 配置
- * @author: 阿星不是程序员
  **/
 public class ServiceLockAutoConfiguration {
     
     @Bean(LockInfoType.SERVICE_LOCK)
     public LockInfoHandle serviceLockInfoHandle(){
+//        用于反射获取注解锁信息
         return new ServiceLockInfoHandle();
     }
     
     @Bean
     public ManageLocker manageLocker(RedissonClient redissonClient){
+//        用hashmap保存不同类型的redisson锁代理对象，并提供对象调用接口
         return new ManageLocker(redissonClient);
     }
     
     @Bean
     public ServiceLockFactory serviceLockFactory(ManageLocker manageLocker){
+//        调用ManageLocker生产制定类型的锁对象
         return new ServiceLockFactory(manageLocker);
     }
     
     @Bean
     public ServiceLockAspect serviceLockAspect(LockInfoHandleFactory lockInfoHandleFactory,ServiceLockFactory serviceLockFactory){
+//        分布式锁注解，自动添加上锁、锁失败处理代码
         return new ServiceLockAspect(lockInfoHandleFactory,serviceLockFactory);
     }
     
     @Bean
     public ServiceLockTool serviceLockTooL(LockInfoHandleFactory lockInfoHandleFactory,ServiceLockFactory serviceLockFactory){
+//        提供手动获取redisson分布式锁对象及加锁解锁的方法
         return new ServiceLockTool(lockInfoHandleFactory,serviceLockFactory);
     }
 }

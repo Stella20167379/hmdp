@@ -3,9 +3,7 @@ package org.javaup.model;
 import lombok.Data;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: redis 中的记录日志信息
- * @author: 阿星不是程序员
  **/
 @Data
 public class RedisTraceLogModel {

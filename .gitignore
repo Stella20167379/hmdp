@@ -4,6 +4,7 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 logs/
+docs/no-git/
 
 **/dependency-reduced-pom.xml
 
@@ -46,5 +47,3 @@ build/
 .agents
 CLAUDE.md
 AGENTS.md
-
-document

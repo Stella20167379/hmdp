@@ -23,9 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: Redis 秒杀订单回滚数据操作组件。
- * @author: 阿星不是程序员
  **/
 @Slf4j
 @Component
@@ -63,11 +61,13 @@ public class RedisVoucherData {
                                          Integer beforeQty,
                                          Integer changeQty,
                                          Integer afterQty) {
+//        生成存储hash tag key，即关键的id存储在哪
         List<String> keys = ListUtil.of(
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId).getRelKey(),
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_USER_TAG_KEY, voucherId).getRelKey(),
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_TRACE_LOG_TAG_KEY, voucherId).getRelKey()
         );
+//       Lua ARGV：voucherId、userId、orderId、操作码、traceId、日志类型（恢复）
         String[] args = new String[9];
         args[0] = String.valueOf(voucherId);
         args[1] = String.valueOf(userId);
@@ -78,9 +78,10 @@ public class RedisVoucherData {
         args[6] = String.valueOf(beforeQty);
         args[7] = String.valueOf(changeQty);
         args[8] = String.valueOf(afterQty);
-        
+//        调用lua脚本回滚
         Integer finalCode = luaRollbackWithResultCode(keys, args, retryMaxAttempts, initialBackoffMillis, maxBackoffMillis);
         boolean ok = finalCode != null && finalCode.equals(BaseCode.SUCCESS.getCode());
+//        回滚失败记录日志
         if (!ok) {
             String reason = BaseCode.getMsg(finalCode == null ? -1 : finalCode);
             log.error("Redis回滚最终失败|voucherId={}|userId={}|orderId={}|traceId={} reason={}", voucherId, userId, orderId, traceId, reason);
@@ -95,8 +96,9 @@ public class RedisVoucherData {
             int maxAttempts,
             long initialBackoffMs,
             long maxBackoffMs) {
-        int attempt = 0;
-        long backoff = Math.max(50, initialBackoffMs);
+//        使用lua脚本原子回滚
+        int attempt = 0; // 回滚次数记录
+        long backoff = Math.max(50, initialBackoffMs);//回滚后退避时间/休眠时间
         Integer lastCode = null;
         while (true) {
             try {
@@ -116,6 +118,7 @@ public class RedisVoucherData {
             if (attempt >= maxAttempts) {
                 break;
             }
+            // 退避 + 抖动（jitter）：避免热点一致重试导致雪崩
             sleepQuietly(withJitter(backoff));
             backoff = Math.min(backoff * 2, Math.max(backoff, maxBackoffMs));
         }

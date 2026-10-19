@@ -34,9 +34,7 @@ import static org.javaup.utils.RedisConstants.LOCK_SECKILL_VOUCHER_KEY;
 import static org.javaup.utils.RedisConstants.LOCK_SECKILL_VOUCHER_STOCK_KEY;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 秒杀优惠券 接口实现
- * @author: 阿星不是程序员
  **/
 @Slf4j
 @Service
@@ -67,10 +65,12 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_TAG_KEY, voucherId);
         RedisKeyBuild seckillVoucherNullRedisKey =
                 RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_VOUCHER_NULL_TAG_KEY, voucherId);
+//        查询本地缓存
         SeckillVoucherFullModel localCacheHit = seckillVoucherLocalCache.get(seckillVoucherRedisKey.getRelKey());
         if (Objects.nonNull(localCacheHit)) {
             return localCacheHit;
         }
+//        查询redis缓存
         SeckillVoucherFullModel seckillVoucherFullModel =
                 redisCache.get(seckillVoucherRedisKey, SeckillVoucherFullModel.class);
         if (Objects.nonNull(seckillVoucherFullModel)) {
@@ -78,17 +78,21 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
             return seckillVoucherFullModel;
         }
         log.info("查询秒杀优惠券 从Redis缓存没有查询到 秒杀优惠券的优惠券id : {}",voucherId);
+//        布隆过滤器初步检查key是否合规或是否存在
         if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_VOUCHER).contains(String.valueOf(voucherId))) {
             log.info("查询秒杀优惠券 布隆过滤器判断不存在 秒杀优惠券id : {}",voucherId);
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
+//        判断是否已经在redis中设为null值
         Boolean existResult = redisCache.hasKey(seckillVoucherNullRedisKey);
         if (existResult){
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
+//        key值无对应value缓存，需抢锁读数据库回写
         RLock lock = serviceLockTool.getLock(LockType.Reentrant, LOCK_SECKILL_VOUCHER_KEY, new String[]{String.valueOf(voucherId)});
         lock.lock();
         try {
+//            二次检查redis缓存
             seckillVoucherFullModel = redisCache.get(seckillVoucherRedisKey, SeckillVoucherFullModel.class);
             if (Objects.nonNull(seckillVoucherFullModel)) {
                 seckillVoucherLocalCache.put(seckillVoucherRedisKey.getRelKey(), seckillVoucherFullModel);
@@ -98,7 +102,9 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
             if (existResult){
                 throw new RuntimeException("查询优惠券不存在");
             }
+//            读数据库查秒杀优惠券表
             SeckillVoucher seckillVoucher = lambdaQuery().eq(SeckillVoucher::getVoucherId,voucherId).one();
+//           回写缓存
             if (Objects.isNull(seckillVoucher)) {
                 redisCache.set(seckillVoucherNullRedisKey,
                         "这是一个空值",
@@ -106,11 +112,14 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                         TimeUnit.MINUTES);
                 throw new RuntimeException("查询秒杀优惠券不存在");
             }
+//            根据优惠券有效时长计算key值过期时间
             long ttlSeconds = Math.max(
                     LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                     1L
             );
+//            读数据库查优惠券表
             Voucher voucher = voucherService.lambdaQuery().eq(Voucher::getId, voucherId).one();
+//            回写redis缓存
             seckillVoucherFullModel = new SeckillVoucherFullModel();
             BeanUtils.copyProperties(seckillVoucher, seckillVoucherFullModel);
             seckillVoucherFullModel.setShopId(voucher.getShopId());
@@ -122,9 +131,11 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                     ttlSeconds,
                     TimeUnit.SECONDS
             );
+//            回写本地缓存
             seckillVoucherLocalCache.put(seckillVoucherRedisKey.getRelKey(), seckillVoucherFullModel);
             return seckillVoucherFullModel;
         }finally {
+//            释放锁
             lock.unlock();
         }
     }
@@ -132,29 +143,35 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
     @Override
     @ServiceLock(lockType= LockType.Read,name = UPDATE_SECKILL_VOUCHER_STOCK_LOCK,keys = {"#voucherId"})
     public void loadVoucherStock(Long voucherId){
+//        布隆过滤器初步判断key值是否存在
         if (!bloomFilterHandlerFactory.get(BLOOM_FILTER_HANDLER_VOUCHER).contains(String.valueOf(voucherId))) {
             log.info("加载库存 布隆过滤器判断不存在 秒杀优惠券id : {}",voucherId);
             throw new RuntimeException("查询秒杀优惠券不存在");
         }
+//        查redis库存
         String stock = 
                 redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId), String.class);
         if (Objects.nonNull(stock)) {
             return;
         }
+//        reidis缓存没有，抢锁
         RLock lock = serviceLockTool.getLock(LockType.Reentrant, LOCK_SECKILL_VOUCHER_STOCK_KEY, 
                 new String[]{String.valueOf(voucherId)});
         lock.lock();
         try {
+//            二次检查redis缓存
             stock = redisCache.get(RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId), String.class);
             if (Objects.nonNull(stock)) {
                 return;
             }
+//            缓存仍然没有，都数据库
             SeckillVoucher seckillVoucher = lambdaQuery().eq(SeckillVoucher::getVoucherId,voucherId).one();
             if (Objects.nonNull(seckillVoucher)) {
                 long ttlSeconds = Math.max(
                         LocalDateTimeUtil.between(LocalDateTimeUtil.now(), seckillVoucher.getEndTime()).getSeconds(),
                         1L
                 );
+//                回写缓存
                 redisCache.set(
                         RedisKeyBuild.createRedisKey(RedisKeyManage.SECKILL_STOCK_TAG_KEY, voucherId),
                         String.valueOf(seckillVoucher.getStock()),
@@ -163,6 +180,7 @@ public class SeckillVoucherServiceImpl extends ServiceImpl<SeckillVoucherMapper,
                 );
             }
         }finally {
+//            释放锁
             lock.unlock();
         }
     }

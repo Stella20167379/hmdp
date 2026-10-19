@@ -10,16 +10,16 @@ import org.javaup.kafka.message.SeckillVoucherMessage;
 import org.javaup.message.MessageExtend;
 
 /**
- * @program: 黑马点评-plus升级版实战项目。添加 阿星不是程序员 微信，添加时备注 点评 来获取项目的完整资料
  * @description: 优惠券订单 接口
- * @author: 阿星不是程序员
  **/
 public interface IVoucherOrderService extends IService<VoucherOrder> {
 
+//    这是下单接口，但只是扣减库存尚未真正写入订单
     Result<Long> seckillVoucher(Long voucherId);
 
     void createVoucherOrderV1(VoucherOrder voucherOrder);
-    
+
+//    这个才是kafka消息被消费时，真正创建订单的入口
     boolean createVoucherOrderV2(MessageExtend<SeckillVoucherMessage> message);
     
     Long getSeckillVoucherOrder(GetVoucherOrderDto getVoucherOrderDto);

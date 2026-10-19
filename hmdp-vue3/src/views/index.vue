@@ -26,7 +26,9 @@ const queryTypes = async () => {
     console.log('获取首页商品列表数据失败:', error)
   }
 }
+// 调用函数启动请求
 queryTypes()
+
 // 获取首页博客数据
 const queryHotBlogsScroll = async () => {
   try {

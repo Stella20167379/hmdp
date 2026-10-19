@@ -8,12 +8,6 @@ spring:
     allow-circular-references: true  
   datasource:
     driver-class-name: org.apache.shardingsphere.driver.ShardingSphereDriver
-    url: jdbc:shardingsphere:classpath:shardingsphere.yaml
-  data:
-    redis:
-      database: 0
-      host: 127.0.0.1
-      port: 6379
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
@@ -26,7 +20,7 @@ spring:
     generator:
       WRITE_NUMBERS_AS_STRINGS: true
   kafka:
-    bootstrap-servers: localhost:9092
+    # Kafka-既是生产者也是消费者配置
     producer:
       acks: all
       retries: 5

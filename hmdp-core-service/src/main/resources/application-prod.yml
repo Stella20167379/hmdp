@@ -1,0 +1,14 @@
+# application-prod.yml
+
+spring:
+  datasource:
+    # 注意?placeholder-type=environment传入环境变量值
+    url: jdbc:shardingsphere:classpath:shardingsphere-prod.yaml?placeholder-type=environment
+  data:
+    redis:
+      database: 0
+      host: redis # 直接内部网络访问服务
+      port: 6379
+      password: ${REDIS_PASSWORD}
+  kafka:
+    bootstrap-servers: kafka:9092

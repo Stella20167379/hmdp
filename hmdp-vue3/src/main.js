@@ -10,7 +10,7 @@ import 'element-plus/dist/index.css'
 
 const app = createApp(App)
 
-app.use(pinia)
-app.use(router)
+app.use(pinia) // 全局的数据仓库，所有组件都可以从这里获取数据或者更新数据。
+app.use(router) // 把路由器安装进 Vue 应用。
 
 app.mount('#app')

@@ -14,7 +14,9 @@
 
     <name>hmdp-core-service</name>
     <description>黑马点评核心服务</description>
+
     <dependencies>
+        <!--    依赖于自定义的子模块    -->
         <dependency>
             <groupId>org.javaup</groupId>
             <artifactId>hmdp-sharding</artifactId>
@@ -131,7 +133,9 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
     </dependencies>
+
     <build>
+        <finalName>hmdp-web</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
